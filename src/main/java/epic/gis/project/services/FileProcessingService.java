@@ -1,6 +1,7 @@
 package epic.gis.project.services;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +29,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.geotools.geojson.geom.GeometryJSON;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import epic.gis.project.DTOs.FeatureUpdateDTO;
 import epic.gis.project.entity.LayerFeature;
 import epic.gis.project.entity.UploadedLayer;
 import epic.gis.project.repository.FeatureRepository;
@@ -163,24 +165,6 @@ public class FileProcessingService {
 
     }
 
-    // public Map<String, Object> getLayerGeoJson(UUID layerId) {
-    //     List<LayerFeature> features = featureRepository.findByLayerId(layerId);
-    //     Map<String, Object> geoJson = new HashMap<>();
-    //     geoJson.put("type", "FeatureCollection");
-    //     List<Map<String, Object>> featureList = new ArrayList<>();
-
-    //     for (LayerFeature lf : features) {
-    //         Map<String, Object> feature = new HashMap<>();
-    //         feature.put("type", "Feature");
-    //         feature.put("geometry", lf.getGeom()); // Jackson-datatype-jts will handle this
-    //         feature.put("properties", lf.getProperties());
-    //         featureList.add(feature);
-    //     }
-    //     geoJson.put("features", featureList);
-    //     return geoJson;
-
-    // }
-
     public Map<String, Object> getLayerGeoJson(UUID layerId) {
         List<LayerFeature> features = featureRepository.findByLayerId(layerId);
         Map<String, Object> geoJson = new HashMap<>();
@@ -207,6 +191,30 @@ public class FileProcessingService {
         }
         geoJson.put("features", featureList);
         return geoJson;
+    }
+
+    public LayerFeature updateFeature(FeatureUpdateDTO updateDto) throws Exception {
+        // 1. Find existing feature
+        LayerFeature feature = featureRepository.findById(updateDto.getId())
+                .orElseThrow(() -> new RuntimeException("Feature not found"));
+
+        // 2. Update Geometry if present
+        if (updateDto.getGeometry() != null) {
+            // Convert Map -> JSON String -> JTS Geometry
+            String geoJsonString = objectMapper.writeValueAsString(updateDto.getGeometry());
+            Geometry geom = geometryJSON.read(new StringReader(geoJsonString));
+            // Ensure SRID is 4326
+            geom.setSRID(4326);
+            feature.setGeom(geom);
+        }
+
+        // 3. Update Properties if present
+        if (updateDto.getProperties() != null) {
+            feature.setProperties(updateDto.getProperties());
+        }
+
+        // 4. Save
+        return featureRepository.save(feature);
     }
 
     private String getFileExtension(String filename) {
