@@ -174,6 +174,7 @@ public class FileProcessingService {
         for (LayerFeature lf : features) {
             Map<String, Object> feature = new HashMap<>();
             feature.put("type", "Feature");
+            feature.put("id", lf.getId());
             feature.put("properties", lf.getProperties());
             
             // MANUAL CONVERSION: JTS Geometry -> GeoJSON Map
