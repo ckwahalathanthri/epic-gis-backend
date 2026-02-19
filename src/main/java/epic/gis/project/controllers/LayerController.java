@@ -2,6 +2,7 @@ package epic.gis.project.controllers;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import org.geotools.geojson.geom.GeometryJSON;
 
@@ -47,14 +49,49 @@ public class LayerController {
     }
 
     @GetMapping("/{id}/geojson")
-    public ResponseEntity<Map<String, Object>> getLayerGeoJson(@org.springframework.web.bind.annotation.PathVariable java.util.UUID id) {
+    public ResponseEntity<Map<String, Object>> getLayerGeoJson(@PathVariable UUID id) {
         return ResponseEntity.ok(fileProcessingService.getLayerGeoJson(id));
     }
 
-    @PutMapping("/features")
-    public ResponseEntity<Map<String, Object>> updateFeature(@RequestBody FeatureUpdateDTO updateDto) {
+    // @PutMapping("/features")
+    // public ResponseEntity<Map<String, Object>> updateFeature(@RequestBody FeatureUpdateDTO updateDto) {
+    //     try {
+    //         LayerFeature updated = fileProcessingService.updateFeature(updateDto);
+            
+    //         // MANUAL CONVERSION: Entity -> Safe JSON Map
+    //         Map<String, Object> response = new HashMap<>();
+    //         response.put("id", updated.getId());
+    //         response.put("layerId", updated.getLayerId());
+    //         response.put("properties", updated.getProperties());
+            
+    //         // JTS Geometry -> GeoJSON Map
+    //         try {
+    //             String geomJsonString = geometryJSON.toString(updated.getGeom());
+    //             Map<String, Object> geomMap = objectMapper.readValue(geomJsonString, Map.class);
+    //             response.put("geometry", geomMap);
+    //         } catch (Exception e) {
+    //             // Return null if conversion fails, better than 500 error
+    //             response.put("geometry", null);
+    //         }
+
+    //         return ResponseEntity.ok(response);
+    //     } catch (Exception e) {
+    //          e.printStackTrace();
+    //         return ResponseEntity.internalServerError().build();
+    //     }
+    // }
+
+    @PutMapping("/{layerId}/features")
+    public ResponseEntity<Map<String, Object>> updateFeature(
+            @PathVariable UUID layerId,
+            @RequestBody FeatureUpdateDTO updateDto) {
         try {
             LayerFeature updated = fileProcessingService.updateFeature(updateDto);
+
+            // Validate that the updated feature actually belongs to the requested layer
+            if (!updated.getLayerId().equals(layerId)) {
+                return ResponseEntity.badRequest().body(null); // Or 403 Forbidden
+            }
             
             // MANUAL CONVERSION: Entity -> Safe JSON Map
             Map<String, Object> response = new HashMap<>();
