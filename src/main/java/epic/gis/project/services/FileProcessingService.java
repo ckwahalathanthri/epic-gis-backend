@@ -44,9 +44,13 @@ public class FileProcessingService {
     @Autowired
     private FeatureRepository featureRepository;
 
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
     private final GeometryJSON geometryJSON = new GeometryJSON(15); 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @org.springframework.transaction.annotation.Transactional
     public UploadedLayer processFile(MultipartFile file, String name) throws IOException{
         String filename = file.getOriginalFilename();
 
@@ -67,6 +71,7 @@ public class FileProcessingService {
         return layer;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     private void processShapefile(MultipartFile zipFile, UploadedLayer layer) throws IOException {
         // create temp directory
         Path tempDir = Files.createTempDirectory("gis_upload_");
@@ -150,6 +155,8 @@ public class FileProcessingService {
                 if (count % BATCH_SIZE == 0) {
                     featureRepository.saveAll(featureList);
                     featureList.clear();
+                    entityManager.flush();
+                    entityManager.clear();
                     System.out.println("Saved batch: " + count);
                 }
             }
@@ -157,6 +164,9 @@ public class FileProcessingService {
             // Save remaining
             if (!featureList.isEmpty()) {
                 featureRepository.saveAll(featureList);
+                entityManager.flush();
+                entityManager.clear();
+                System.out.println("Saved final batch. Total: " + count);
             }
         } finally {
             dataStore.dispose();

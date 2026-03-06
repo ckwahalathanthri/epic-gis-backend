@@ -14,7 +14,8 @@ import java.util.UUID;
 public class LayerFeature {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "layer_features_seq")
+    @SequenceGenerator(name = "layer_features_seq", sequenceName = "layer_features_id_seq", allocationSize = 50)
     private Long id;
 
     // Link back to the parent layer
