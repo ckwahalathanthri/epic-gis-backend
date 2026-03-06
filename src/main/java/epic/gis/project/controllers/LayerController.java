@@ -1,6 +1,7 @@
 package epic.gis.project.controllers;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import epic.gis.project.DTOs.FeatureUpdateDTO;
 import epic.gis.project.entity.LayerFeature;
 import epic.gis.project.entity.UploadedLayer;
+import epic.gis.project.repository.LayerRepository;
 import epic.gis.project.services.FileProcessingService;
 
 @RestController
@@ -32,6 +34,9 @@ import epic.gis.project.services.FileProcessingService;
 public class LayerController {
     @Autowired
     private FileProcessingService fileProcessingService;
+
+    @Autowired
+    private LayerRepository layerRepository;
     
     private final GeometryJSON geometryJSON = new GeometryJSON(15); 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -48,38 +53,15 @@ public class LayerController {
         }
     }
 
+    @GetMapping
+    public ResponseEntity<List<UploadedLayer>> getAllLayers() {
+        return ResponseEntity.ok(layerRepository.findAll());
+    }
+
     @GetMapping("/{id}/geojson")
     public ResponseEntity<Map<String, Object>> getLayerGeoJson(@PathVariable UUID id) {
         return ResponseEntity.ok(fileProcessingService.getLayerGeoJson(id));
     }
-
-    // @PutMapping("/features")
-    // public ResponseEntity<Map<String, Object>> updateFeature(@RequestBody FeatureUpdateDTO updateDto) {
-    //     try {
-    //         LayerFeature updated = fileProcessingService.updateFeature(updateDto);
-            
-    //         // MANUAL CONVERSION: Entity -> Safe JSON Map
-    //         Map<String, Object> response = new HashMap<>();
-    //         response.put("id", updated.getId());
-    //         response.put("layerId", updated.getLayerId());
-    //         response.put("properties", updated.getProperties());
-            
-    //         // JTS Geometry -> GeoJSON Map
-    //         try {
-    //             String geomJsonString = geometryJSON.toString(updated.getGeom());
-    //             Map<String, Object> geomMap = objectMapper.readValue(geomJsonString, Map.class);
-    //             response.put("geometry", geomMap);
-    //         } catch (Exception e) {
-    //             // Return null if conversion fails, better than 500 error
-    //             response.put("geometry", null);
-    //         }
-
-    //         return ResponseEntity.ok(response);
-    //     } catch (Exception e) {
-    //          e.printStackTrace();
-    //         return ResponseEntity.internalServerError().build();
-    //     }
-    // }
 
     @PutMapping("/{layerId}/features")
     public ResponseEntity<Map<String, Object>> updateFeature(
