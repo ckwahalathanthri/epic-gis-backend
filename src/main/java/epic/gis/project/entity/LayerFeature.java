@@ -14,19 +14,19 @@ import java.util.UUID;
 public class LayerFeature {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "layer_features_seq")
-    @SequenceGenerator(name = "layer_features_seq", sequenceName = "layer_features_id_seq", allocationSize = 50)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
     // Link back to the parent layer
+    @Column(name = "layer_id")
     private UUID layerId;
 
-    // The actual spatial data. SRID 4326 = WGS84 (Lat/Lon)
-    @Column(columnDefinition = "geometry(Geometry,4326)")
+    @Column(name = "geom", columnDefinition = "geometry")
+    @JdbcTypeCode(SqlTypes.GEOMETRY)
     private Geometry geom;
 
-    // Dynamic attributes (Name, Population, etc.)
+    @Column(name = "properties", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
     private Map<String, Object> properties;
 }
