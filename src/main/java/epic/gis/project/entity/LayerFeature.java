@@ -2,7 +2,7 @@ package epic.gis.project.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import org.locationtech.jts.geom.Geometry; // Standard Java Topology Suite
+import org.locationtech.jts.geom.Geometry; 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import java.util.Map;

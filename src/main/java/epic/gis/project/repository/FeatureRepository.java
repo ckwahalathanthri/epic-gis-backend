@@ -19,7 +19,7 @@ public interface FeatureRepository extends JpaRepository<LayerFeature, Long> {
             'type', 'Feature',
             'id', f.id,
             'geometry', ST_AsGeoJSON(f.geom)::json,
-            'properties', f.properties
+            'properties', f.properties || jsonb_build_object('_db_id', f.id)
         )::text
         FROM layer_features f
         WHERE f.layer_id = :layerId
