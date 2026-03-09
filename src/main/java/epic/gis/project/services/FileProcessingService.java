@@ -24,10 +24,12 @@ import org.geotools.api.feature.simple.SimpleFeature;
 import org.geotools.api.feature.simple.SimpleFeatureType;
 import org.geotools.feature.FeatureCollection;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.geotools.geojson.geom.GeometryJSON;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.locationtech.jts.io.WKTWriter;
 
 import epic.gis.project.DTOs.FeatureUpdateDTO;
 import epic.gis.project.entity.LayerFeature;
@@ -45,10 +47,14 @@ public class FileProcessingService {
     private FeatureRepository featureRepository;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private jakarta.persistence.EntityManager entityManager;
 
     private final GeometryJSON geometryJSON = new GeometryJSON(15); 
     private final ObjectMapper objectMapper = new ObjectMapper();
+     private final WKTWriter wktWriter = new WKTWriter();
 
     @org.springframework.transaction.annotation.Transactional
     public UploadedLayer processFile(MultipartFile file, String name) throws IOException{
@@ -73,23 +79,15 @@ public class FileProcessingService {
 
     @org.springframework.transaction.annotation.Transactional
     private void processShapefile(MultipartFile zipFile, UploadedLayer layer) throws IOException {
-        // create temp directory
         Path tempDir = Files.createTempDirectory("gis_upload_");
         File shpFile = null;
 
-        // Unzip
         try (ZipInputStream zis = new ZipInputStream(zipFile.getInputStream())) {
             ZipEntry zipEntry = zis.getNextEntry();
             while (zipEntry != null) {
                 File newFile = new File(tempDir.toFile(), zipEntry.getName());
-                // Security check for Zip Slip would go here
-                
-                // Ensure parent directory exists
                 new File(newFile.getParent()).mkdirs();
-                
-                // Write file
                 Files.copy(zis, newFile.toPath());
-                
                 if (newFile.getName().endsWith(".shp")) {
                     shpFile = newFile;
                 }
@@ -97,111 +95,101 @@ public class FileProcessingService {
             }
         }
 
-        if(shpFile == null){
+        if (shpFile == null) {
             throw new IOException("No .shp file found in the uploaded ZIP.");
         }
 
-        //read Shapefile with GeoTools
         Map<String, Object> map = new HashMap<>();
         map.put("url", shpFile.toURI().toURL());
 
-        DataStore dataStore = DataStoreFinder.getDataStore(map);
+         DataStore dataStore = DataStoreFinder.getDataStore(map);
         String typeName = dataStore.getTypeNames()[0];
-
         FeatureSource<SimpleFeatureType, SimpleFeature> source = dataStore.getFeatureSource(typeName);
         FeatureCollection<SimpleFeatureType, SimpleFeature> collection = source.getFeatures();
 
         System.out.println("DEBUG: Found " + collection.size() + " features in shapefile: " + typeName);
 
-        try(FeatureIterator<SimpleFeature> features = collection.features()){
-            List<LayerFeature> featureList = new ArrayList<>();
+        // RAW SQL for maximum speed - bypasses Hibernate entirely
+        final String SQL = """
+            INSERT INTO layer_features (layer_id, geom, properties)
+            VALUES (?::uuid, ST_SetSRID(ST_GeomFromText(?), 4326), ?::jsonb)
+        """;
+
+        final int BATCH_SIZE = 500;
+        final UUID layerId = layer.getId();
+
+        try (FeatureIterator<SimpleFeature> features = collection.features()) {
+            List<Object[]> batch = new ArrayList<>(BATCH_SIZE);
             int count = 0;
-            int BATCH_SIZE = 500;
 
-            while(features.hasNext()){
+            while (features.hasNext()) {
                 SimpleFeature feature = features.next();
-                
-                LayerFeature layerFeature = new LayerFeature();
-                layerFeature.setLayerId(layer.getId());
-                
-                // Get Geometry
-                // Check if geometry is null to avoid errors
                 Object defaultGeom = feature.getDefaultGeometry();
+                if (defaultGeom == null) continue;
 
-                // DEBUG: Print info for first feature
-                if (count == 0) {
-                     System.out.println("DEBUG: First feature Geometry class: " + (defaultGeom != null ? defaultGeom.getClass().getName() : "NULL"));
-                }
+                Geometry geom = (Geometry) defaultGeom;
 
-                if (defaultGeom != null) {
-                    layerFeature.setGeom((Geometry) defaultGeom);
-                } else {
-                    continue; // Skip features without geometry
-                }
+                // Convert geometry to WKT string (fast)
+                String wkt = wktWriter.write(geom);
 
-                // Get Attributes (converting to Map for JSONB)
+                // Convert properties to JSON string
                 Map<String, Object> props = new HashMap<>();
                 for (Property prop : feature.getProperties()) {
-                    if (!prop.getName().toString().equals("the_geom")) {
-                        props.put(prop.getName().toString(), prop.getValue());
+                    String propName = prop.getName().toString();
+                    if (!propName.equals("the_geom") && prop.getValue() != null) {
+                        props.put(propName, prop.getValue().toString());
                     }
                 }
-                layerFeature.setProperties(props);
-                
-                featureList.add(layerFeature);
+                String propsJson = objectMapper.writeValueAsString(props);
+
+                batch.add(new Object[]{layerId, wkt, propsJson});
                 count++;
 
-                // Batch Save
-                if (count % BATCH_SIZE == 0) {
-                    featureRepository.saveAll(featureList);
-                    featureList.clear();
-                    entityManager.flush();
-                    entityManager.clear();
-                    System.out.println("Saved batch: " + count);
+                if (batch.size() == BATCH_SIZE) {
+                    jdbcTemplate.batchUpdate(SQL, batch);
+                    batch.clear();
+                    System.out.println("Inserted batch: " + count);
                 }
             }
-            
-            // Save remaining
-            if (!featureList.isEmpty()) {
-                featureRepository.saveAll(featureList);
-                entityManager.flush();
-                entityManager.clear();
-                System.out.println("Saved final batch. Total: " + count);
+
+            // Insert remaining rows
+            if (!batch.isEmpty()) {
+                jdbcTemplate.batchUpdate(SQL, batch);
+                System.out.println("Inserted final batch. Total: " + count);
             }
+
+        } catch (Exception e) {
+            throw new IOException("Failed during feature insert: " + e.getMessage(), e);
         } finally {
             dataStore.dispose();
-            // Cleanup tempDir logic here
+            // Cleanup temp directory
+            Files.walk(tempDir)
+                .sorted(java.util.Comparator.reverseOrder())
+                .map(Path::toFile)
+                .forEach(File::delete);
         }
-
     }
 
     public Map<String, Object> getLayerGeoJson(UUID layerId) {
-        List<LayerFeature> features = featureRepository.findByLayerId(layerId);
-        Map<String, Object> geoJson = new HashMap<>();
-        geoJson.put("type", "FeatureCollection");
-        List<Map<String, Object>> featureList = new ArrayList<>();
+        // Let PostGIS convert geometry to GeoJSON inside the database (very fast)
+        List<String> rawFeatures = featureRepository.findGeoJsonStringsByLayerId(layerId);
 
-        for (LayerFeature lf : features) {
-            Map<String, Object> feature = new HashMap<>();
-            feature.put("type", "Feature");
-            feature.put("id", lf.getId());
-            feature.put("properties", lf.getProperties());
-            
-            // MANUAL CONVERSION: JTS Geometry -> GeoJSON Map
-            try {
-                // GeoTools writes Geometry to a String like '{"type":"Point",...}'
-                String geomJsonString = geometryJSON.toString(lf.getGeom());
-                // Jackson parses that String into a real Java Map
-                Map<String, Object> geomMap = objectMapper.readValue(geomJsonString, Map.class);
-                feature.put("geometry", geomMap);
-            } catch (Exception e) {
-                e.printStackTrace(); // Log error but don't crash
-            }
-            
-            featureList.add(feature);
+        // Build the FeatureCollection wrapper
+        // Join all pre-built feature JSON strings with commas
+        String featuresArray = String.join(",", rawFeatures);
+        String fullGeoJson = "{\"type\":\"FeatureCollection\",\"features\":[" + featuresArray + "]}";
+
+        try {
+            // Parse once into a Map and return
+            return objectMapper.readValue(fullGeoJson, Map.class);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Return empty collection on error
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("type", "FeatureCollection");
+            empty.put("features", new ArrayList<>());
+            return empty;
         }
-        geoJson.put("features", featureList);
-        return geoJson;
     }
 
     public LayerFeature updateFeature(FeatureUpdateDTO updateDto) throws Exception {
