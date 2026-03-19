@@ -65,9 +65,34 @@ public class LayerController {
         return ResponseEntity.ok(layerRepository.findAll());
     }
 
-    @GetMapping("/{id}/geojson")
-    public ResponseEntity<Map<String, Object>> getLayerGeoJson(@PathVariable UUID id) {
-        return ResponseEntity.ok(fileProcessingService.getLayerGeoJson(id));
+    // @GetMapping("/{id}/geojson")
+    // public ResponseEntity<Map<String, Object>> getLayerGeoJson(@PathVariable UUID id) {
+    //     return ResponseEntity.ok(fileProcessingService.getLayerGeoJson(id));
+    // }
+
+    @GetMapping(value = "/{id}/geojson", produces = "application/json")
+    public ResponseEntity<String> getLayerGeoJson(@PathVariable UUID id) {
+        return ResponseEntity.ok(fileProcessingService.getLayerGeoJsonString(id));
+    }
+
+    @GetMapping(value = "/{id}/tiles/{z}/{x}/{y}.pbf", produces = "application/x-protobuf")
+    public ResponseEntity<byte[]> getVectorTile(
+            @PathVariable UUID id,
+            @PathVariable int z,
+            @PathVariable int x,
+            @PathVariable int y) {
+        try {
+            byte[] tile = fileProcessingService.getVectorTile(id, z, x, y);
+            if (tile == null || tile.length == 0) {
+                return ResponseEntity.noContent().build();
+            }
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/x-protobuf")
+                    .body(tile);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @DeleteMapping("/{id}")
