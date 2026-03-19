@@ -25,4 +25,6 @@ public interface FeatureRepository extends JpaRepository<LayerFeature, Long> {
         WHERE f.layer_id = :layerId
     """, nativeQuery = true)
     List<String> findGeoJsonStringsByLayerId(@Param("layerId") UUID layerId);
+
+    void deleteByLayerId(UUID layerId);
 }
