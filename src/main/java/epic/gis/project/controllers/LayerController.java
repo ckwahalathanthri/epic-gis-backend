@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,9 +23,12 @@ import org.geotools.geojson.geom.GeometryJSON;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import jakarta.transaction.Transactional;
+
 import epic.gis.project.DTOs.FeatureUpdateDTO;
 import epic.gis.project.entity.LayerFeature;
 import epic.gis.project.entity.UploadedLayer;
+import epic.gis.project.repository.FeatureRepository;
 import epic.gis.project.repository.LayerRepository;
 import epic.gis.project.services.FileProcessingService;
 
@@ -37,6 +41,9 @@ public class LayerController {
 
     @Autowired
     private LayerRepository layerRepository;
+
+    @Autowired
+    private FeatureRepository featureRepository;
     
     private final GeometryJSON geometryJSON = new GeometryJSON(15); 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -61,6 +68,22 @@ public class LayerController {
     @GetMapping("/{id}/geojson")
     public ResponseEntity<Map<String, Object>> getLayerGeoJson(@PathVariable UUID id) {
         return ResponseEntity.ok(fileProcessingService.getLayerGeoJson(id));
+    }
+
+    @DeleteMapping("/{id}")
+    @Transactional
+    public ResponseEntity<?> deleteLayer(@PathVariable UUID id) {
+        try {
+            // First, delete all geometric features attached to this UUID from PostGIS
+            featureRepository.deleteByLayerId(id);
+            // Then, delete the metadata container
+            layerRepository.deleteById(id);
+            
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @PutMapping("/{layerId}/features")
