@@ -170,26 +170,59 @@ public class FileProcessingService {
         }
     }
 
-    public Map<String, Object> getLayerGeoJson(UUID layerId) {
-        // Let PostGIS convert geometry to GeoJSON inside the database (very fast)
+    // public Map<String, Object> getLayerGeoJson(UUID layerId) {
+    //     // Let PostGIS convert geometry to GeoJSON inside the database (very fast)
+    //     List<String> rawFeatures = featureRepository.findGeoJsonStringsByLayerId(layerId);
+
+    //     // Build the FeatureCollection wrapper
+    //     // Join all pre-built feature JSON strings with commas
+    //     String featuresArray = String.join(",", rawFeatures);
+    //     String fullGeoJson = "{\"type\":\"FeatureCollection\",\"features\":[" + featuresArray + "]}";
+
+    //     try {
+    //         // Parse once into a Map and return
+    //         return objectMapper.readValue(fullGeoJson, Map.class);
+    //     } catch (Exception e) {
+    //         e.printStackTrace();
+    //         // Return empty collection on error
+    //         Map<String, Object> empty = new HashMap<>();
+    //         empty.put("type", "FeatureCollection");
+    //         empty.put("features", new ArrayList<>());
+    //         return empty;
+    //     }
+    // }
+
+        public String getLayerGeoJsonString(UUID layerId) {
+        // Let PostGIS convert geometry to GeoJSON inside the database 
         List<String> rawFeatures = featureRepository.findGeoJsonStringsByLayerId(layerId);
 
-        // Build the FeatureCollection wrapper
-        // Join all pre-built feature JSON strings with commas
-        String featuresArray = String.join(",", rawFeatures);
-        String fullGeoJson = "{\"type\":\"FeatureCollection\",\"features\":[" + featuresArray + "]}";
-
-        try {
-            // Parse once into a Map and return
-            return objectMapper.readValue(fullGeoJson, Map.class);
-        } catch (Exception e) {
-            e.printStackTrace();
-            // Return empty collection on error
-            Map<String, Object> empty = new HashMap<>();
-            empty.put("type", "FeatureCollection");
-            empty.put("features", new ArrayList<>());
-            return empty;
+        // If no features, return an empty valid GeoJSON
+        if (rawFeatures == null || rawFeatures.isEmpty()) {
+            return "{\"type\":\"FeatureCollection\",\"features\":[]}";
         }
+
+        // Build the FeatureCollection wrapper efficiently
+        String featuresArray = String.join(",", rawFeatures);
+        return "{\"type\":\"FeatureCollection\",\"features\":[" + featuresArray + "]}";
+    }
+
+        public byte[] getVectorTile(UUID layerId, int z, int x, int y) {
+        // High-performance Mapbox Vector Tile (MVT) generation directly via PostGIS
+        String sql = """
+            SELECT ST_AsMVT(q, 'default')
+            FROM (
+                SELECT ST_AsMVTGeom(
+                    ST_Transform(f.geom, 3857),
+                    ST_TileEnvelope(?, ?, ?),
+                    4096, 256, true
+                ) AS geom, f.properties
+                FROM layer_features f
+                WHERE f.layer_id = ?
+                  AND f.geom && ST_Transform(ST_TileEnvelope(?, ?, ?), 4326)
+            ) AS q
+        """;
+
+        return jdbcTemplate.queryForObject(sql, byte[].class, z, x, y, layerId, z, x, y);
     }
 
     public LayerFeature updateFeature(FeatureUpdateDTO updateDto) throws Exception {

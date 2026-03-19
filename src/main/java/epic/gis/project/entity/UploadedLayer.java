@@ -4,7 +4,10 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.beans.factory.annotation.Autowired;
+
 import java.util.UUID;
+import java.util.List;
 import java.util.Map;
 
 @Entity
@@ -26,4 +29,13 @@ public class UploadedLayer {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> styleConfig;
+
+//     @Autowired
+//     private FeatureRepository featureRepository;
+
+//     public String getLayerGeoJsonString(UUID layerId) {
+//     List<String> rawFeatures = featureRepository.findGeoJsonStringsByLayerId(layerId);
+//     String featuresArray = String.join(",", rawFeatures);
+//     return "{\"type\":\"FeatureCollection\",\"features\":[" + featuresArray + "]}";
+// }
 }
