@@ -217,27 +217,27 @@ public class FileProcessingService {
         }
     }
 
-    // public Map<String, Object> getLayerGeoJson(UUID layerId) {
-    //     // Let PostGIS convert geometry to GeoJSON inside the database (very fast)
-    //     List<String> rawFeatures = featureRepository.findGeoJsonStringsByLayerId(layerId);
+        public LayerFeature addFeature(UUID layerId, FeatureUpdateDTO newDto) throws Exception {
+        LayerFeature feature = new LayerFeature();
+        feature.setLayerId(layerId);
 
-    //     // Build the FeatureCollection wrapper
-    //     // Join all pre-built feature JSON strings with commas
-    //     String featuresArray = String.join(",", rawFeatures);
-    //     String fullGeoJson = "{\"type\":\"FeatureCollection\",\"features\":[" + featuresArray + "]}";
+        // Parse frontend GeoJSON geometry to PostGIS Geometry
+        if (newDto.getGeometry() != null) {
+            String geoJsonString = objectMapper.writeValueAsString(newDto.getGeometry());
+            Geometry geom = geometryJSON.read(new StringReader(geoJsonString));
+            // Ensure SRID is standard WGS84
+            geom.setSRID(4326);
+            feature.setGeom(geom);
+        } else {
+            throw new IllegalArgumentException("Cannot add feature: geometry is missing");
+        }
 
-    //     try {
-    //         // Parse once into a Map and return
-    //         return objectMapper.readValue(fullGeoJson, Map.class);
-    //     } catch (Exception e) {
-    //         e.printStackTrace();
-    //         // Return empty collection on error
-    //         Map<String, Object> empty = new HashMap<>();
-    //         empty.put("type", "FeatureCollection");
-    //         empty.put("features", new ArrayList<>());
-    //         return empty;
-    //     }
-    // }
+        // Add any properties attached from the frontend (or default to empty Map)
+        feature.setProperties(newDto.getProperties() != null ? newDto.getProperties() : new java.util.HashMap<>());
+
+        // Save new feature to PostGIS
+        return featureRepository.save(feature);
+    }
 
         public String getLayerGeoJsonString(UUID layerId) {
         // Let PostGIS convert geometry to GeoJSON inside the database 

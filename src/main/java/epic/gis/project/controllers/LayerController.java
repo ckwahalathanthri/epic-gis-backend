@@ -70,6 +70,27 @@ public class LayerController {
     //     return ResponseEntity.ok(fileProcessingService.getLayerGeoJson(id));
     // }
 
+        @PostMapping("/{layerId}/features")
+    public ResponseEntity<Map<String, Object>> addFeature(
+            @PathVariable UUID layerId,
+            @RequestBody FeatureUpdateDTO newFeatureDto) {
+        try {
+            // Validate layer exists if necessary, then add feature (handles GeoJSON parse)
+            LayerFeature added = fileProcessingService.addFeature(layerId, newFeatureDto);
+
+            // Respond cleanly so Angular frontend knows it succeeded
+            Map<String, Object> response = new HashMap<>();
+            response.put("id", added.getId());
+            response.put("layerId", added.getLayerId());
+            response.put("properties", added.getProperties());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @GetMapping(value = "/{id}/geojson", produces = "application/json")
     public ResponseEntity<String> getLayerGeoJson(@PathVariable UUID id) {
         return ResponseEntity.ok(fileProcessingService.getLayerGeoJsonString(id));
