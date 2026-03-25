@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.geotools.geojson.geom.GeometryJSON;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.locationtech.jts.io.WKTWriter;
 
 import epic.gis.project.DTOs.FeatureUpdateDTO;
@@ -71,7 +72,7 @@ public class FileProcessingService {
             // Assume zipped Shapefile for now
             processShapefile(file, layer);
         } else if (filename.toLowerCase().endsWith(".json") || filename.toLowerCase().endsWith(".geojson")) {
-            // processGeoJson(file, layer); // To implement
+            processGeoJson(file, layer); // To implement
         }
         
         return layer;
@@ -167,6 +168,52 @@ public class FileProcessingService {
                 .sorted(java.util.Comparator.reverseOrder())
                 .map(Path::toFile)
                 .forEach(File::delete);
+        }
+    }
+
+        @org.springframework.transaction.annotation.Transactional
+    private void processGeoJson(MultipartFile file, UploadedLayer layer) throws IOException {
+        // Leverages PostGIS's built-in ST_GeomFromGeoJSON for lightning fast native parsing
+        final String SQL = """
+            INSERT INTO layer_features (layer_id, geom, properties)
+            VALUES (?::uuid, ST_SetSRID(ST_GeomFromGeoJSON(?), 4326), ?::jsonb)
+        """;
+        
+        try {
+            JsonNode root = objectMapper.readTree(file.getInputStream());
+            JsonNode features = root.path("features");
+            
+            if (features.isMissingNode() || !features.isArray()) {
+                throw new IOException("Invalid GeoJSON file: 'features' array is missing.");
+            }
+            
+            List<Object[]> batch = new ArrayList<>();
+            final int BATCH_SIZE = 500;
+            final UUID layerId = layer.getId();
+            
+            for (JsonNode feature : features) {
+                JsonNode geometry = feature.path("geometry");
+                JsonNode properties = feature.path("properties");
+                
+                if (geometry.isMissingNode() || geometry.isNull()) continue;
+                
+                batch.add(new Object[]{
+                    layerId, 
+                    geometry.toString(), // Send raw geometry JSON block to PostGIS
+                    properties.isMissingNode() ? "{}" : properties.toString()
+                });
+                
+                if (batch.size() == BATCH_SIZE) {
+                    jdbcTemplate.batchUpdate(SQL, batch);
+                    batch.clear();
+                }
+            }
+            
+            if (!batch.isEmpty()) {
+                jdbcTemplate.batchUpdate(SQL, batch);
+            }
+        } catch (Exception e) {
+            throw new IOException("Failed to process GeoJSON: " + e.getMessage(), e);
         }
     }
 
