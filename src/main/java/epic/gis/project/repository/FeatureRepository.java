@@ -27,4 +27,6 @@ public interface FeatureRepository extends JpaRepository<LayerFeature, Long> {
     List<String> findGeoJsonStringsByLayerId(@Param("layerId") UUID layerId);
 
     void deleteByLayerId(UUID layerId);
+
+    void deleteByIdAndLayerId(Long id, UUID layerId);
 }
