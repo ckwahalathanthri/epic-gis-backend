@@ -26,6 +26,7 @@ import org.geotools.feature.FeatureCollection;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.geotools.geojson.geom.GeometryJSON;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -300,4 +301,8 @@ public class FileProcessingService {
         return filename.substring(filename.lastIndexOf(".") + 1).toUpperCase();
     }
 
+    @Transactional
+    public void deleteFeature(UUID layerId, Long featureId) throws Exception {
+        featureRepository.deleteByIdAndLayerId(featureId, layerId);
+    }
 }

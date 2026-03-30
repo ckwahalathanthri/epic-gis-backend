@@ -166,4 +166,17 @@ public class LayerController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @DeleteMapping("/{layerId}/features/{featureId}")
+    public ResponseEntity<?> deleteFeature(
+            @PathVariable UUID layerId,
+            @PathVariable Long featureId) {
+        try {
+            fileProcessingService.deleteFeature(layerId, featureId);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
 }
